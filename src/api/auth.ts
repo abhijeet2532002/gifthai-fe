@@ -13,16 +13,22 @@ export type signupPayload = {
     role:string|undefined,
 }
 
-export const loginHandler = async(payload:loginPayload) => {
-    console.log("Login payload:", );
-    const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/v1/auth/login`,{
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      }) 
-}
+export const loginHandler = async (payload: loginPayload) => {
+  const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/v1/auth/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json();
+    throw new Error(errorData.message || "Login failed");
+  }
+
+  return await res.json(); // Ye wo JSON return karega jo aapne bataya tha
+};
 
 export const signupHandler = async(payload:signupPayload) => {
     console.log("payload",payload);

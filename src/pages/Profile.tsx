@@ -1,316 +1,311 @@
-import { useEffect, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
-import { Bell, Heart, LogOut, MapPin, Package, Settings, User } from "lucide-react";
+import { useEffect, useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { useSelector, useDispatch } from "react-redux";
+import { LogOut, User, MapPin, Package, Bell, Loader2, Camera } from "lucide-react";
+
+// Redux Actions & Store
+import { RootState } from "@/store/store";
+import { logout, updateUser } from "@/store/authSlice";
+
+// UI Components
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-const recentOrders = [
-  { id: "AC-2841", date: "Mar 12, 2026", total: 92, status: "Delivered" },
-  { id: "AC-2790", date: "Feb 24, 2026", total: 38, status: "Delivered" },
-  { id: "AC-2738", date: "Jan 08, 2026", total: 156, status: "Delivered" },
-];
-
 const Profile = () => {
-  const { user, loading, logout, updateProfile } = useAuth();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const fileInputRef = useRef<HTMLInputElement>(null); // Image input ke liye ref
+
+  // Redux state se data lena
+  const { user, token } = useSelector((state: RootState) => state.auth);
+
+  const [loading, setLoading] = useState(false);
+  const [avatarLoading, setAvatarLoading] = useState(false); // Avatar upload ke liye alag loader
 
   const [profile, setProfile] = useState({
-    firstName: "",
-    lastName: "",
+    fname: "",
+    lname: "",
     email: "",
-    phone: "",
-    bio: "",
-    address: "",
-    city: "",
-    zip: "",
+    avatar: "", // Local state mein base64 ya URL rakhne ke liye
   });
 
+  // User data ko Redux se local state mein sync karna
   useEffect(() => {
     if (user) {
-      setProfile((p) => ({
-        ...p,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-      }));
+      setProfile({
+        fname: user.fName || "",
+        lname: user.lName || "",
+        email: user.email || "", // Token wala email automatically aayega via slice logic
+        avatar: user.avatar || "", 
+      });
+    } else {
+      navigate("/login"); // Agar token clear ho gaya hai toh login pe bhejo
     }
-  }, [user]);
+  }, [user, navigate]);
 
-  const [notifications, setNotifications] = useState({
-    orders: true,
-    drops: true,
-    marketing: false,
-  });
+  // --- API Handlers ---
 
-  if (loading) {
-    return (
-      <PageLayout>
-        <div className="container py-24 text-center text-muted-foreground">Loading…</div>
-      </PageLayout>
-    );
-  }
-
-  // if (!user) {
-  //   return <Navigate to="/login" replace state={{ from: "/profile" }} />;
-  // }
-
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateProfile({
-      firstName: profile.firstName,
-      lastName: profile.lastName,
-      email: profile.email,
+  // Utility function: Image file ko Base64 string mein convert karne ke liye
+  const convertToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const fileReader = new FileReader();
+      fileReader.readAsDataURL(file);
+      fileReader.onload = () => resolve(fileReader.result as string);
+      fileReader.onerror = (error) => reject(error);
     });
-    toast.success("Profile updated");
   };
 
-  const handleSignOut = () => {
-    logout();
-    toast.success("Signed out");
-    navigate("/", { replace: true });
+  // 1. Handle Avatar Change (Photo input trigger)
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user || !token) return;
+
+    // File type validation
+    if (!file.type.startsWith('image/')) {
+      toast.error("Please upload an image file");
+      return;
+    }
+
+    setAvatarLoading(true);
+    try {
+      // Image ko base64 string banao
+      const base64Image = await convertToBase64(file);
+      
+      // Optimistic Update: API call se pehle hi UI update kar do taaki fast lage
+      setProfile(p => ({ ...p, avatar: base64Image }));
+
+      // API Call: PATCH /api/v1/user/{id}
+      // Aapke API body structure ke hisaab se data bhej rahe hain
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/v1/user/${user.userId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          id: user.userId,
+          fname: profile.fname,
+          lname: profile.lname,
+          email: user.email, // Priority email
+          role: user.role, 
+          avtar: base64Image // Backend field name 'avtar' hai, hum base64 bhej rahe hain
+        }),
+      });
+
+      if (!response.ok) throw new Error("Avatar upload failed on server");
+
+      const data = await response.json();
+      
+      // Success: Redux store update karein (specifically avatar field)
+      dispatch(updateUser({ avatar: data.avtar })); // API 'avtar' return karega, hum use state mein mapping karenge
+      toast.success("Profile picture updated!");
+
+    } catch (err) {
+      // Revert optimistic update on failure
+      setProfile(p => ({ ...p, avatar: user.avatar || "" }));
+      toast.error("Failed to upload image. Please try again.");
+    } finally {
+      setAvatarLoading(false);
+    }
   };
 
+  // 2. Update Profile Details (PATCH API for Name)
+  const handleSaveDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !token) return;
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/v1/user/${user.userId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          id: user.userId,
+          fname: profile.fname,
+          lname: profile.lname,
+          email: user.email, 
+          role: user.role,
+          avtar: user.avatar // Current avatar URL/base64
+        }),
+      });
+
+      if (!response.ok) throw new Error("Details update failed");
+
+      const data = await response.json();
+      
+      // Update Redux Store
+      dispatch(updateUser({ fName: data.fname, lName: data.lname }));
+      toast.success("Personal details updated!");
+    } catch (err) {
+      toast.error("Unable to update details.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 3. Sign Out (POST API)
+  const handleSignOut = async () => {
+    try {
+      await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/v1/user/${user?.userId}`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+    } catch (err) {
+      console.warn("Server side logout failed", err);
+    } finally {
+      // Frontend cleanup is mandatory
+      dispatch(logout());
+      toast.success("Logged out successfully");
+      navigate("/", { replace: true });
+    }
+  };
+
+  if (!user) return null; // Fallback
 
   return (
     <PageLayout>
-      <section className="border-b border-border bg-gradient-soft">
-        <div className="container py-12 md:py-16">
-          <div className="flex flex-col items-start gap-6 sm:flex-row sm:items-center">
-            <div className="grid h-20 w-20 shrink-0 place-items-center rounded-full bg-gradient-primary text-primary-foreground shadow-elegant">
-              <span className="font-display text-3xl font-semibold">
-                {profile.firstName[0]}
-                {profile.lastName[0]}
-              </span>
+      <header className="border-b bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
+        <div className="container py-12 md:py-16 flex flex-col md:flex-row items-center gap-8">
+          
+          {/* Avatar Section */}
+          <div className="relative group shrink-0">
+            {/* Image display */}
+            <div className="h-28 w-28 rounded-full overflow-hidden border-4 border-white dark:border-slate-800 shadow-xl bg-primary flex items-center justify-center text-white text-4xl font-bold font-display">
+              {profile.avatar ? (
+                <img src={profile.avatar} alt="Profile" className="h-full w-full object-cover" />
+              ) : (
+                <>
+                  {profile.fname?.[0]?.toUpperCase()}
+                  {profile.lname?.[0]?.toUpperCase()}
+                </>
+              )}
+              
+              {/* Avatar Upload Loading Overlay */}
+              {avatarLoading && (
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-full">
+                  <Loader2 className="h-6 w-6 animate-spin text-white" />
+                </div>
+              )}
             </div>
-            <div className="flex-1">
-              <p className="text-xs font-medium uppercase tracking-[0.2em] text-primary">Member since 2024</p>
-              <h1 className="mt-2 font-display text-4xl font-semibold md:text-5xl">
-                {profile.firstName} {profile.lastName}
-              </h1>
-              <p className="mt-2 text-muted-foreground">{profile.email}</p>
-            </div>
-            <Button variant="outline" className="rounded-full" onClick={handleSignOut}>
-              <LogOut className="h-4 w-4" /> Sign out
-            </Button>
-          </div>
-        </div>
-      </section>
 
-      <section className="container py-12">
+            {/* Hidden File Input */}
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleAvatarChange} 
+              accept="image/*" 
+              className="hidden" 
+            />
+
+            {/* Upload Button (Floater) */}
+            <button 
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className={cn(
+                "absolute -bottom-1 -right-1 h-9 w-9 rounded-full bg-primary text-white flex items-center justify-center shadow-lg",
+                "transition-transform hover:scale-110",
+                avatarLoading && "opacity-50 cursor-not-allowed"
+              )}
+              disabled={avatarLoading}
+              aria-label="Change profile picture"
+            >
+              <Camera className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Header text */}
+          <div className="flex-1 text-center md:text-left">
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-primary">Member Account</p>
+            <h1 className="mt-2 font-display text-4xl font-semibold md:text-5xl tracking-tight">
+              {profile.fname} {profile.lname}
+            </h1>
+            <p className="mt-2 text-muted-foreground">{profile.email}</p>
+          </div>
+
+          <Button variant="outline" className="rounded-full border-destructive text-destructive hover:bg-destructive/10" onClick={handleSignOut}>
+            <LogOut className="h-4 w-4 mr-2" /> Sign out
+          </Button>
+        </div>
+      </header>
+
+      <main className="container py-12">
         <Tabs defaultValue="account" className="w-full">
-          <TabsList className="mb-8 h-auto flex-wrap gap-1 bg-muted p-1">
+          <TabsList className="mb-8 bg-muted rounded-full p-1 h-auto flex-wrap gap-1">
             <TabsTrigger value="account" className="gap-2 rounded-full px-4 py-2">
-              <User className="h-4 w-4" /> Account
-            </TabsTrigger>
-            <TabsTrigger value="address" className="gap-2 rounded-full px-4 py-2">
-              <MapPin className="h-4 w-4" /> Addresses
+              <User size={16}/> Account
             </TabsTrigger>
             <TabsTrigger value="orders" className="gap-2 rounded-full px-4 py-2">
-              <Package className="h-4 w-4" /> Orders
-            </TabsTrigger>
-            <TabsTrigger value="prefs" className="gap-2 rounded-full px-4 py-2">
-              <Bell className="h-4 w-4" /> Preferences
+              <Package size={16}/> Orders
             </TabsTrigger>
           </TabsList>
 
+          {/* Account Details Tab */}
           <TabsContent value="account">
-            <form onSubmit={handleSave} className="grid gap-8 rounded-2xl border border-border bg-card p-6 shadow-card md:p-10">
+            <form onSubmit={handleSaveDetails} className="grid gap-8 rounded-2xl border bg-card p-6 shadow-sm md:p-10">
               <div>
-                <h2 className="font-display text-xl font-semibold">Personal details</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Update how your name and contact appear on orders.
-                </p>
+                <h2 className="font-display text-2xl font-semibold">Personal details</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Update your basic information below.</p>
               </div>
 
               <div className="grid gap-5 sm:grid-cols-2">
-                <div>
+                <div className="space-y-1.5">
                   <Label htmlFor="first">First name</Label>
                   <Input
                     id="first"
-                    value={profile.firstName}
-                    onChange={(e) => setProfile({ ...profile, firstName: e.target.value })}
-                    className="mt-1.5"
+                    value={profile.fname}
+                    onChange={(e) => setProfile({ ...profile, fname: e.target.value })}
                   />
                 </div>
-                <div>
+                <div className="space-y-1.5">
                   <Label htmlFor="last">Last name</Label>
                   <Input
                     id="last"
-                    value={profile.lastName}
-                    onChange={(e) => setProfile({ ...profile, lastName: e.target.value })}
-                    className="mt-1.5"
+                    value={profile.lname}
+                    onChange={(e) => setProfile({ ...profile, lname: e.target.value })}
                   />
                 </div>
-                <div>
-                  <Label htmlFor="email">Email</Label>
+                
+                {/* Email (Read-only as it comes from Token) */}
+                <div className="sm:col-span-2 space-y-1.5">
+                  <Label htmlFor="email">Email Address</Label>
                   <Input
                     id="email"
                     type="email"
                     value={profile.email}
-                    onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                    className="mt-1.5"
+                    disabled 
+                    className="bg-muted cursor-not-allowed"
                   />
-                </div>
-                <div>
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    value={profile.phone}
-                    onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-                    className="mt-1.5"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <Label htmlFor="bio">Gift profile</Label>
-                  <Textarea
-                    id="bio"
-                    rows={3}
-                    value={profile.bio}
-                    onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
-                    className="mt-1.5"
-                    placeholder="Tell us a bit about what you love…"
-                  />
+                  <p className="text-xs text-muted-foreground italic">Email is managed via identity provider and cannot be changed here.</p>
                 </div>
               </div>
 
-              <div className="flex justify-end">
-                <Button type="submit" size="lg" className="rounded-full">
-                  Save changes
+              <div className="flex justify-end border-t pt-6">
+                <Button type="submit" size="lg" className="rounded-full px-10" disabled={loading}>
+                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Save Details
                 </Button>
               </div>
             </form>
           </TabsContent>
 
-          <TabsContent value="address">
-            <form onSubmit={handleSave} className="grid gap-8 rounded-2xl border border-border bg-card p-6 shadow-card md:p-10">
-              <div>
-                <h2 className="font-display text-xl font-semibold">Default shipping address</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Where your beautifully-wrapped gifts will arrive.
-                </p>
-              </div>
-              <div className="grid gap-5 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <Label htmlFor="address">Address</Label>
-                  <Input
-                    id="address"
-                    value={profile.address}
-                    onChange={(e) => setProfile({ ...profile, address: e.target.value })}
-                    className="mt-1.5"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="city">City</Label>
-                  <Input
-                    id="city"
-                    value={profile.city}
-                    onChange={(e) => setProfile({ ...profile, city: e.target.value })}
-                    className="mt-1.5"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="zip">Postal code</Label>
-                  <Input
-                    id="zip"
-                    value={profile.zip}
-                    onChange={(e) => setProfile({ ...profile, zip: e.target.value })}
-                    className="mt-1.5"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <Button type="submit" size="lg" className="rounded-full">
-                  Save address
-                </Button>
-              </div>
-            </form>
-          </TabsContent>
-
+          {/* Orders Tab (Placeholder) */}
           <TabsContent value="orders">
-            <div className="rounded-2xl border border-border bg-card shadow-card">
-              <div className="border-b border-border p-6">
-                <h2 className="font-display text-xl font-semibold">Recent orders</h2>
-                <p className="mt-1 text-sm text-muted-foreground">A look at your past gifts.</p>
-              </div>
-              <ul className="divide-y divide-border">
-                {recentOrders.map((o) => (
-                  <li key={o.id} className="flex flex-wrap items-center justify-between gap-4 p-6">
-                    <div>
-                      <p className="font-display text-base font-semibold">{o.id}</p>
-                      <p className="text-sm text-muted-foreground">{o.date}</p>
-                    </div>
-                    <span
-                      className={cn(
-                        "rounded-full px-3 py-1 text-xs font-medium",
-                        "bg-success/15 text-success",
-                      )}
-                    >
-                      {o.status}
-                    </span>
-                    <p className="font-display text-base font-semibold">${o.total.toFixed(2)}</p>
-                    <Button variant="ghost" size="sm" className="rounded-full">
-                      View
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="prefs">
-            <div className="grid gap-8 rounded-2xl border border-border bg-card p-6 shadow-card md:p-10">
-              <div>
-                <h2 className="font-display text-xl font-semibold">Notifications</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Choose what we keep you in the loop on.
-                </p>
-              </div>
-              {[
-                { key: "orders", label: "Order updates", desc: "Confirmations, shipping, and delivery." },
-                { key: "drops", label: "New edits", desc: "A heads-up when a new collection lands." },
-                { key: "marketing", label: "Studio musings", desc: "Occasional notes from the studio." },
-              ].map((item) => (
-                <div key={item.key} className="flex items-start justify-between gap-6">
-                  <div>
-                    <p className="font-medium">{item.label}</p>
-                    <p className="text-sm text-muted-foreground">{item.desc}</p>
-                  </div>
-                  <Switch
-                    checked={notifications[item.key as keyof typeof notifications]}
-                    onCheckedChange={(v) =>
-                      setNotifications({ ...notifications, [item.key]: v })
-                    }
-                  />
-                </div>
-              ))}
-              <Separator />
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="grid h-10 w-10 place-items-center rounded-full bg-muted">
-                    <Heart className="h-4 w-4 text-primary" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Wishlist</p>
-                    <p className="text-sm text-muted-foreground">8 saved gifts</p>
-                  </div>
-                </div>
-                <Button variant="outline" className="rounded-full">
-                  <Settings className="h-4 w-4" /> Manage
-                </Button>
-              </div>
+            <div className="rounded-2xl border bg-card p-12 text-center text-muted-foreground">
+              <Package className="h-10 w-10 mx-auto mb-4 opacity-50" />
+              <p className="font-medium">No orders found</p>
+              <p className="text-sm">You haven't placed any gifts yet.</p>
             </div>
           </TabsContent>
         </Tabs>
-      </section>
+      </main>
     </PageLayout>
   );
 };

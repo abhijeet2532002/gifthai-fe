@@ -1,11 +1,19 @@
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Gift, Heart, Truck } from "lucide-react";
+import { ArrowRight, Gift, Heart, Truck, Loader2 } from "lucide-react";
+
+// Redux Hooks & Actions
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { fetchProducts } from "@/store/productSlice";
+
+// Components
 import { PageLayout } from "@/components/layout/PageLayout";
 import { AnnouncementBar } from "@/components/shop/AnnouncementBar";
 import { ProductCard } from "@/components/shop/ProductCard";
 import { SectionHeading } from "@/components/shop/SectionHeading";
 import { Button } from "@/components/ui/button";
-import { bestsellers, products } from "@/data/products";
+
+// Assets
 import heroImg from "@/assets/hero-gift.jpg";
 
 const features = [
@@ -15,11 +23,27 @@ const features = [
 ];
 
 const Index = () => {
+  const dispatch = useAppDispatch();
+  
+  // Redux store se products aur loading status nikalna
+  const { items, loading, error } = useAppSelector((state) => state.products);
+
+  // Filter logic for Bestsellers and Recent Items
+  const bestsellerItems = items.filter(p => p.bestseller).slice(0, 4);
+  const catalogPeek = items.slice(0, 6);
+
+  useEffect(() => {
+    // Page load par products fetch karna agar store empty hai
+    if (items.length === 0) {
+      dispatch(fetchProducts());
+    }
+  }, [dispatch, items.length]);
+
   return (
     <PageLayout>
       <AnnouncementBar />
 
-      {/* Hero */}
+      {/* Hero Section */}
       <section className="relative overflow-hidden bg-gradient-hero">
         <div className="container grid items-center gap-12 py-16 md:grid-cols-2 md:py-24 lg:py-32">
           <div className="animate-fade-in">
@@ -39,24 +63,6 @@ const Index = () => {
                   Shop the edit <ArrowRight className="h-4 w-4" />
                 </Link>
               </Button>
-              <Button asChild variant="outline" size="lg" className="rounded-full">
-                <Link to="/products">Bestsellers</Link>
-              </Button>
-            </div>
-
-            <div className="mt-12 grid grid-cols-3 gap-6 border-t border-border/60 pt-8">
-              <div>
-                <p className="font-display text-2xl font-semibold">2.4k+</p>
-                <p className="text-xs uppercase tracking-wider text-muted-foreground">Happy gifts sent</p>
-              </div>
-              <div>
-                <p className="font-display text-2xl font-semibold">4.9★</p>
-                <p className="text-xs uppercase tracking-wider text-muted-foreground">Customer rating</p>
-              </div>
-              <div>
-                <p className="font-display text-2xl font-semibold">42</p>
-                <p className="text-xs uppercase tracking-wider text-muted-foreground">Indie makers</p>
-              </div>
             </div>
           </div>
 
@@ -64,21 +70,9 @@ const Index = () => {
             <div className="relative overflow-hidden rounded-3xl shadow-elegant">
               <img
                 src={heroImg}
-                alt="A beautifully wrapped gift box with a soft blue silk ribbon"
-                width={1536}
-                height={1280}
+                alt="A beautifully wrapped gift box"
                 className="h-full w-full object-cover"
               />
-            </div>
-            <div className="absolute -bottom-6 -left-6 hidden rounded-2xl bg-card p-5 shadow-elegant md:block">
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">This week</p>
-              <p className="font-display text-2xl font-semibold">−20% Bestsellers</p>
-            </div>
-            <div className="absolute -right-3 -top-3 hidden h-24 w-24 animate-fade-in-slow rounded-full bg-gradient-primary text-primary-foreground shadow-glow md:grid md:place-items-center">
-              <div className="text-center">
-                <p className="font-display text-2xl font-semibold leading-none">New</p>
-                <p className="mt-1 text-[10px] uppercase tracking-widest">Edit</p>
-              </div>
             </div>
           </div>
         </div>
@@ -101,11 +95,11 @@ const Index = () => {
         </div>
       </section>
 
-      {/* Bestsellers */}
+      {/* Bestsellers Section (Dynamic) */}
       <section className="container py-20 md:py-28">
         <SectionHeading
           eyebrow="Most loved"
-          title={<>Bestsellers, by you.</>}
+          title="Bestsellers, by you."
           description="A handful of pieces that keep finding new homes — chosen by you, wrapped by us."
           action={
             <Button asChild variant="ghost" className="rounded-full">
@@ -115,50 +109,23 @@ const Index = () => {
             </Button>
           }
         />
-        <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {bestsellers.map((p) => (
-            <ProductCard key={p.id} product={p} />
-          ))}
-        </div>
-      </section>
-
-      {/* Discount banner */}
-      <section className="container pb-20 md:pb-28">
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-banner p-10 text-primary-foreground md:p-16">
-          <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-primary-glow/20 blur-3xl" />
-          <div className="absolute -bottom-32 -left-10 h-72 w-72 rounded-full bg-primary-glow/20 blur-3xl" />
-          <div className="relative grid items-center gap-8 md:grid-cols-2">
-            <div>
-              <p className="mb-3 text-xs font-medium uppercase tracking-[0.2em] opacity-80">
-                Limited offer · Ends Sunday
-              </p>
-              <h2 className="font-display text-4xl font-semibold leading-tight md:text-5xl">
-                The Spring Edit, 20% off.
-              </h2>
-              <p className="mt-4 max-w-md opacity-85">
-                Our seasonal selection of small, considered gifts — discounted for a few days only.
-              </p>
-              <Button asChild size="lg" variant="secondary" className="mt-8 rounded-full">
-                <Link to="/products">
-                  Shop the edit <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
-            </div>
-            <div className="hidden items-center justify-end gap-4 md:flex">
-              <div className="rounded-2xl bg-background/10 px-8 py-10 text-center backdrop-blur-md">
-                <p className="font-display text-7xl font-semibold leading-none">20</p>
-                <p className="mt-2 text-xs uppercase tracking-widest opacity-80">% off</p>
-              </div>
-              <div className="rounded-2xl bg-background/10 px-8 py-10 text-center backdrop-blur-md">
-                <p className="font-display text-7xl font-semibold leading-none">3</p>
-                <p className="mt-2 text-xs uppercase tracking-widest opacity-80">Days left</p>
-              </div>
-            </div>
+        
+        {loading ? (
+          <div className="flex h-64 items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
-        </div>
+        ) : error ? (
+          <div className="py-10 text-center text-destructive">{error}</div>
+        ) : (
+          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {bestsellerItems.map((p) => (
+              <ProductCard key={p.id} product={p} />
+            ))}
+          </div>
+        )}
       </section>
 
-      {/* Catalog peek */}
+      {/* Catalog Peek (Dynamic) */}
       <section className="container pb-24 md:pb-32">
         <SectionHeading
           eyebrow="The shelves"
@@ -172,11 +139,18 @@ const Index = () => {
             </Button>
           }
         />
-        <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {products.slice(0, 6).map((p) => (
-            <ProductCard key={p.id} product={p} />
-          ))}
-        </div>
+        
+        {loading ? (
+          <div className="flex h-64 items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {catalogPeek.map((p) => (
+              <ProductCard key={p.id} product={p} />
+            ))}
+          </div>
+        )}
       </section>
     </PageLayout>
   );

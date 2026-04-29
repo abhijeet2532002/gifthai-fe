@@ -1,17 +1,37 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { ProductCard } from "@/components/shop/ProductCard";
-import { products } from "@/data/products";
 import { cn } from "@/lib/utils";
+import { Loader2 } from "lucide-react";
 
-const categories = ["All", ...Array.from(new Set(products.map((p) => p.category)))];
+// Redux Hooks & Actions
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { fetchProducts } from "@/store/productSlice";
 
 const Products = () => {
+  const dispatch = useAppDispatch();
   const [active, setActive] = useState("All");
 
+  // Redux store se data aur loading state nikalna
+  const { items, loading, error } = useAppSelector((state) => state.products);
+
+  // Jab page load ho, agar data nahi hai toh fetch karo
+  useEffect(() => {
+    if (items.length === 0) {
+      dispatch(fetchProducts());
+    }
+  }, [dispatch, items.length]);
+
+  // Categories dynamically create karna (API data se)
+  const categories = useMemo(() => {
+    const uniqueCategories = Array.from(new Set(items.map((p) => p.category)));
+    return ["All", ...uniqueCategories];
+  }, [items]);
+
+  // Active category ke basis par filter karna
   const filtered = useMemo(
-    () => (active === "All" ? products : products.filter((p) => p.category === active)),
-    [active],
+    () => (active === "All" ? items : items.filter((p) => p.category === active)),
+    [active, items]
   );
 
   return (
@@ -19,7 +39,7 @@ const Products = () => {
       <section className="border-b border-border bg-gradient-soft">
         <div className="container py-16 md:py-24">
           <p className="mb-4 text-xs font-medium uppercase tracking-[0.2em] text-primary">
-            The Studio · {products.length} pieces
+            The Studio · {items.length} pieces
           </p>
           <h1 className="font-display text-5xl font-semibold leading-[1.05] tracking-tight text-balance md:text-6xl">
             Every gift, considered.
@@ -31,6 +51,7 @@ const Products = () => {
       </section>
 
       <section className="container py-12">
+        {/* Category Filters */}
         <div className="-mx-1 mb-10 flex flex-wrap gap-2">
           {categories.map((c) => (
             <button
@@ -48,11 +69,36 @@ const Products = () => {
           ))}
         </div>
 
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filtered.map((p) => (
-            <ProductCard key={p.id} product={p} />
-          ))}
-        </div>
+        {/* Loading State */}
+        {loading && (
+          <div className="flex h-64 flex-col items-center justify-center gap-4">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-muted-foreground">Fetching studio items...</p>
+          </div>
+        )}
+
+        {/* Error State */}
+        {error && (
+          <div className="py-10 text-center text-destructive">
+            <p>Error: {error}</p>
+          </div>
+        )}
+
+        {/* Product Grid */}
+        {!loading && !error && (
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {filtered.map((p) => (
+              <ProductCard key={p.id} product={p} />
+            ))}
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!loading && filtered.length === 0 && (
+          <div className="py-20 text-center">
+            <p className="text-muted-foreground">No products found in this category.</p>
+          </div>
+        )}
       </section>
     </PageLayout>
   );

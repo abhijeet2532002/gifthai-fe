@@ -9,10 +9,16 @@ import { Separator } from "@/components/ui/separator";
 import { useCart } from "@/contexts/CartContext";
 import { toast } from "sonner";
 
+// Redux Hook import karein
+import { useAppSelector } from "@/store/hooks";
+
 const Checkout = () => {
   const { items, subtotal, clear } = useCart();
   const navigate = useNavigate();
   const [done, setDone] = useState(false);
+
+  // Store se user data nikalna
+  const user = useAppSelector((state) => state.auth.user);
 
   const shipping = subtotal > 75 || subtotal === 0 ? 0 : 8;
   const tax = subtotal * 0.08;
@@ -76,7 +82,15 @@ const Checkout = () => {
               <div className="mt-4 grid gap-4">
                 <div>
                   <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" required placeholder="you@example.com" className="mt-1.5" />
+                  <Input 
+                    id="email" 
+                    type="email" 
+                    required 
+                    placeholder="you@example.com" 
+                    className="mt-1.5"
+                    // User ka email autofill kiya
+                    defaultValue={user?.email || ""} 
+                  />
                 </div>
               </div>
             </div>
@@ -86,11 +100,23 @@ const Checkout = () => {
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <div>
                   <Label htmlFor="first">First name</Label>
-                  <Input id="first" required className="mt-1.5" />
+                  <Input 
+                    id="first" 
+                    required 
+                    className="mt-1.5" 
+                    // User ka fName autofill kiya
+                    defaultValue={user?.fName || ""}
+                  />
                 </div>
                 <div>
                   <Label htmlFor="last">Last name</Label>
-                  <Input id="last" required className="mt-1.5" />
+                  <Input 
+                    id="last" 
+                    required 
+                    className="mt-1.5" 
+                    // User ka lName autofill kiya
+                    defaultValue={user?.lName || ""}
+                  />
                 </div>
                 <div className="sm:col-span-2">
                   <Label htmlFor="address">Address</Label>
@@ -138,7 +164,12 @@ const Checkout = () => {
                 {items.map((i) => (
                   <li key={i.id} className="flex gap-3">
                     <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-muted">
-                      <img src={i.image} alt={i.name} className="h-full w-full object-cover" />
+                      {/* Base URL handling for images */}
+                      <img 
+                        src={`${import.meta.env.VITE_API_BASE_URL}${i.image}`} 
+                        alt={i.name} 
+                        className="h-full w-full object-cover" 
+                      />
                       <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-foreground px-1 text-[10px] font-semibold text-background">
                         {i.quantity}
                       </span>
