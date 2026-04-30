@@ -22,9 +22,11 @@ const Profile = () => {
   const fileInputRef = useRef<HTMLInputElement>(null); // Image input ke liye ref
 
   // Redux state se data lena
-  const { user, token } = useSelector((state: RootState) => state.auth);
+let { user } = useSelector((state: RootState) => state.auth); 
 
-  const [loading, setLoading] = useState(false);
+ const email = user?.email || ""; // Token se email nikal kar local variable mein rakhna, taaki API calls mein use kar sakein 
+ user = user?.user; // Redux slice mein user object ke andar actual user data hai, isliye yahan se nikal rahe hain
+ const [loading, setLoading] = useState(false);
   const [avatarLoading, setAvatarLoading] = useState(false); // Avatar upload ke liye alag loader
 
   const [profile, setProfile] = useState({
@@ -40,7 +42,7 @@ const Profile = () => {
       setProfile({
         fname: user.fName || "",
         lname: user.lName || "",
-        email: user.email || "", // Token wala email automatically aayega via slice logic
+        email: email || "", // Token wala email automatically aayega via slice logic
         avatar: user.avatar || "", 
       });
     } else {

@@ -1,18 +1,25 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { jwtDecode } from "jwt-decode";
 
-// 1. Backend response structure mein 'address' add kiya
+// 1. Naye response ke hisaab se Interfaces define kiye
+interface Address {
+  state: string;
+  pincode: string;
+  landmark: string;
+}
+
 interface UserData {
   userId: number;
   fName: string;
   lName: string;
   role: string;
-  avatar: string; 
-  address?: string; // Naya field add kiya
-  email?: string; 
+  avatar: string;
+  address: Address[]; // String ki jagah Array of Objects
+  mobile: string[];    // Array of strings
+  email?: string;
 }
 
-interface AuthState { 
+interface AuthState {
   user: UserData | null;
   token: string | null;
 }
@@ -26,13 +33,22 @@ const authSlice = createSlice({
   name: "auth",
   initialState,
   reducers: {
-    setCredentials: (state, action: PayloadAction<{ user: UserData; accessToken: string }>) => {
-      const { user, accessToken } = action.payload;
+    setCredentials: (state, action: PayloadAction<any>) => {
+      // Direct pure response ko destructure kar rahe hain
+      const { accessToken, ...userData } = action.payload;
+
+      console.log("xxxxxxxxxxx ",userData);
       
+
+      const user: UserData = {
+        ...userData,
+        email: "" // Initializing
+      };
+
       try {
         const decoded: any = jwtDecode(accessToken);
-        // Backend ke hisaab se 'sub' ya 'email' lein
-        user.email = decoded.sub || decoded.email; 
+        // Response mein token se email nikal kar set kar rahe hain
+        user.email = decoded.sub || decoded.email;
       } catch (e) {
         console.error("Token decoding failed", e);
       }
@@ -44,8 +60,6 @@ const authSlice = createSlice({
       localStorage.setItem("user", JSON.stringify(user));
     },
 
-    // 2. Is reducer se address (ya koi bhi field) update ho jayegi
-    // Example: dispatch(updateUser({ address: 'Mumbai, India' }))
     updateUser: (state, action: PayloadAction<Partial<UserData>>) => {
       if (state.user) {
         state.user = { ...state.user, ...action.payload };

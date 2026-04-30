@@ -59,7 +59,9 @@ const Login = () => {
           lName: response.lName,
           role: response.role,
           avatar: `http://10.40.67.94:8080${response.avatar}`,
-          userId: response.userId
+          userId: response.userId,
+          address: response.address,
+          mobile: response.mobile,
         },
         accessToken: response.accessToken
       }));

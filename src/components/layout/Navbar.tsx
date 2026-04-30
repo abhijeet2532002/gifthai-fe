@@ -24,12 +24,13 @@ export const Navbar = () => {
   const [scrolled, setScrolled] = useState(false);
 
   // Redux Logic
-  const { user } = useSelector((state: RootState) => state.auth);
+  let { user } = useSelector((state: RootState) => state.auth);
   const dispatch = useDispatch();
-
+  user = user?.user;
   useEffect(() => setOpen(false), [location.pathname]);
 
   useEffect(() => {
+    
     const handler = () => setScrolled(window.scrollY > 8);
     window.addEventListener("scroll", handler, { passive: true });
     return () => window.removeEventListener("scroll", handler);
@@ -90,7 +91,8 @@ export const Navbar = () => {
                       <img src={user.avatar} alt="User" className="h-full w-full object-cover" />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center bg-primary text-xs font-bold text-white">
-                        {user.fName[0].toUpperCase()}
+                        {/* {user.fName[0].toUpperCase()} */}
+                        hello
                       </div>
                     )}
                   </div>

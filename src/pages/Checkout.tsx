@@ -19,6 +19,7 @@ const Checkout = () => {
 
   // Store se user data nikalna
   const user = useAppSelector((state) => state.auth.user);
+  
 
   const shipping = subtotal > 75 || subtotal === 0 ? 0 : 8;
   const tax = subtotal * 0.08;
@@ -30,6 +31,48 @@ const Checkout = () => {
     clear();
     toast.success("Order placed! A confirmation is on its way.");
   };
+
+ const handlePlaceOrder = async () => {
+  // 1. Token nikalna (Redux state ya localStorage se)
+  const token = localStorage.getItem("token"); 
+
+  if (!token) {
+    toast.error("Please login to place an order");
+    return;
+  }
+
+  // 2. Body Prepare karna
+  // Note: items.reduce use kar rahe hain total amount ke liye kyunki items ek array hai
+  const orderBody = {
+    address: user?.user?.address?.[0]?.landmark || "No Address Provided",
+    totalAmount: total.toFixed(2), // Jo humne calculation ki thi (subtotal + tax + shipping)
+    transactionID: `TXN_${Math.floor(Math.random() * 1000000)}`, // Demo ID
+    productIds: items.map(item => item.id) // Saare products ki IDs ka array
+  };
+
+  try {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/v1/orders`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}` // Token yahan jayega
+      },
+      body: JSON.stringify(orderBody)
+    });
+
+    if (response.ok) {
+      setDone(true);
+      clear(); // Cart clear karna
+      toast.success("Order placed successfully!");
+    } else {
+      const errorData = await response.json();
+      toast.error(errorData.message || "Failed to place order");
+    }
+  } catch (error) {
+    console.error("Order Error:", error);
+    toast.error("Something went wrong. Please try again.");
+  }
+};
 
   if (done) {
     return (
@@ -105,7 +148,7 @@ const Checkout = () => {
                     required 
                     className="mt-1.5" 
                     // User ka fName autofill kiya
-                    defaultValue={user?.fName || ""}
+                    defaultValue={user?.user?.fName || ""}
                   />
                 </div>
                 <div>
@@ -115,20 +158,20 @@ const Checkout = () => {
                     required 
                     className="mt-1.5" 
                     // User ka lName autofill kiya
-                    defaultValue={user?.lName || ""}
+                    defaultValue={user?.user?.lName || ""}
                   />
                 </div>
                 <div className="sm:col-span-2">
                   <Label htmlFor="address">Address</Label>
-                  <Input id="address" required className="mt-1.5" />
+                  <Input id="address" required className="mt-1.5" defaultValue={user?.user?.address?.[0]?.landmark || ""} />
                 </div>
                 <div>
                   <Label htmlFor="city">City</Label>
-                  <Input id="city" required className="mt-1.5" />
+                  <Input id="city" required className="mt-1.5" defaultValue={user?.user?.address?.[0]?.state || ""} />
                 </div>
                 <div>
                   <Label htmlFor="zip">Postal code</Label>
-                  <Input id="zip" required className="mt-1.5" />
+                  <Input id="zip" required className="mt-1.5" defaultValue={user?.user?.address?.[0]?.pincode || ""} />
                 </div>
               </div>
             </div>
@@ -166,7 +209,7 @@ const Checkout = () => {
                     <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-muted">
                       {/* Base URL handling for images */}
                       <img 
-                        src={`${import.meta.env.VITE_API_BASE_URL}${i.image}`} 
+                        src={`${i.image}`} 
                         alt={i.name} 
                         className="h-full w-full object-cover" 
                       />
@@ -179,7 +222,7 @@ const Checkout = () => {
                         <p className="text-sm font-medium leading-tight">{i.name}</p>
                         <p className="text-xs text-muted-foreground">{i.tagline}</p>
                       </div>
-                      <p className="text-sm font-medium">${(i.price * i.quantity).toFixed(2)}</p>
+                      <p className="text-sm font-medium">₹{(i.price * i.quantity).toFixed(2)}</p>
                     </div>
                   </li>
                 ))}
@@ -204,7 +247,7 @@ const Checkout = () => {
                   <dd className="font-display font-semibold">${total.toFixed(2)}</dd>
                 </div>
               </dl>
-              <Button type="submit" size="lg" className="mt-6 w-full rounded-full">
+              <Button onClick={handlePlaceOrder} size="lg" className="mt-6 w-full rounded-full">
                 Place order — ${total.toFixed(2)}
               </Button>
             </div>
