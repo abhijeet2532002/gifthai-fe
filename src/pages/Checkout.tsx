@@ -36,8 +36,10 @@ const Checkout = () => {
   // 1. Token nikalna (Redux state ya localStorage se)
   const token = localStorage.getItem("token"); 
 
+
   if (!token) {
     toast.error("Please login to place an order");
+    navigate("/login");
     return;
   }
 

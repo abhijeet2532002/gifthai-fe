@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
-import { LogOut, User, MapPin, Package, Bell, Loader2, Camera } from "lucide-react";
+import { LogOut, User, MapPin, Package, Loader2, Camera, Mail, ShieldCheck } from "lucide-react";
 
 // Redux Actions & Store
 import { RootState } from "@/store/store";
@@ -16,135 +16,143 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
+// --- Interfaces ---
+interface Order {
+  id: number;
+  address: string;
+  totalAmount: number;
+  transactionID: string;
+  status: string;
+  orderDate: string;
+  products: Array<{
+    id: number;
+    title: string;
+    price: number;
+    productImage: string;
+    color: string;
+  }>;
+}
+
 const Profile = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  const fileInputRef = useRef<HTMLInputElement>(null); // Image input ke liye ref
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Redux state se data lena
-let { user } = useSelector((state: RootState) => state.auth); 
+  // Redux state extraction
+  const authState = useSelector((state: RootState) => state.auth);
+  const token = authState.token;
+  const userBase = authState.user; 
+  const actualUser = userBase?.user;
 
- const email = user?.email || ""; // Token se email nikal kar local variable mein rakhna, taaki API calls mein use kar sakein 
- user = user?.user; // Redux slice mein user object ke andar actual user data hai, isliye yahan se nikal rahe hain
- const [loading, setLoading] = useState(false);
-  const [avatarLoading, setAvatarLoading] = useState(false); // Avatar upload ke liye alag loader
+  // Local States
+  const [loading, setLoading] = useState(false);
+  const [avatarLoading, setAvatarLoading] = useState(false);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [price,setPrice] = useState(0);
 
   const [profile, setProfile] = useState({
     fname: "",
     lname: "",
     email: "",
-    avatar: "", // Local state mein base64 ya URL rakhne ke liye
+    avatar: "",
   });
 
-  // User data ko Redux se local state mein sync karna
   useEffect(() => {
-    if (user) {
+    if (actualUser) {
       setProfile({
-        fname: user.fName || "",
-        lname: user.lName || "",
-        email: email || "", // Token wala email automatically aayega via slice logic
-        avatar: user.avatar || "", 
+        fname: actualUser.fName || "",
+        lname: actualUser.lName || "",
+        email: userBase?.email || "",
+        avatar: actualUser.avatar || "",
       });
+      fetchUserOrders();
     } else {
-      navigate("/login"); // Agar token clear ho gaya hai toh login pe bhejo
+      navigate("/login");
     }
-  }, [user, navigate]);
+  }, [actualUser, navigate]);
 
-  // --- API Handlers ---
+  const fetchUserOrders = async () => {
+    if (!actualUser?.userId || !token) return;
+    setOrdersLoading(true);
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/v1/orders/user/${actualUser.userId}`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setOrders(data);
+      }
+    } catch (err) {
+      console.error("Order Fetch Error:", err);
+    } finally {
+      setOrdersLoading(false);
+    }
+  };
 
-  // Utility function: Image file ko Base64 string mein convert karne ke liye
   const convertToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
-      const fileReader = new FileReader();
-      fileReader.readAsDataURL(file);
-      fileReader.onload = () => resolve(fileReader.result as string);
-      fileReader.onerror = (error) => reject(error);
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
     });
   };
 
-  // 1. Handle Avatar Change (Photo input trigger)
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !user || !token) return;
-
-    // File type validation
-    if (!file.type.startsWith('image/')) {
-      toast.error("Please upload an image file");
-      return;
-    }
+    if (!file || !actualUser || !token) return;
 
     setAvatarLoading(true);
     try {
-      // Image ko base64 string banao
       const base64Image = await convertToBase64(file);
-      
-      // Optimistic Update: API call se pehle hi UI update kar do taaki fast lage
-      setProfile(p => ({ ...p, avatar: base64Image }));
-
-      // API Call: PATCH /api/v1/user/{id}
-      // Aapke API body structure ke hisaab se data bhej rahe hain
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/v1/user/${user.userId}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/v1/user/${actualUser.userId}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({
-          id: user.userId,
+          id: actualUser.userId,
           fname: profile.fname,
           lname: profile.lname,
-          email: user.email, // Priority email
-          role: user.role, 
-          avtar: base64Image // Backend field name 'avtar' hai, hum base64 bhej rahe hain
+          email: userBase.email,
+          role: actualUser.role,
+          avtar: base64Image 
         }),
       });
 
-      if (!response.ok) throw new Error("Avatar upload failed on server");
-
+      if (!response.ok) throw new Error();
       const data = await response.json();
-      
-      // Success: Redux store update karein (specifically avatar field)
-      dispatch(updateUser({ avatar: data.avtar })); // API 'avtar' return karega, hum use state mein mapping karenge
-      toast.success("Profile picture updated!");
-
+      dispatch(updateUser({ ...actualUser, avatar: data.avtar }));
+      setProfile(prev => ({ ...prev, avatar: data.avtar }));
+      toast.success("Profile photo updated!");
     } catch (err) {
-      // Revert optimistic update on failure
-      setProfile(p => ({ ...p, avatar: user.avatar || "" }));
-      toast.error("Failed to upload image. Please try again.");
+      toast.error("Failed to upload image.");
     } finally {
       setAvatarLoading(false);
     }
   };
 
-  // 2. Update Profile Details (PATCH API for Name)
   const handleSaveDetails = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !token) return;
+    if (!actualUser || !token) return;
 
     setLoading(true);
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/v1/user/${user.userId}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/v1/user/${actualUser.userId}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({
-          id: user.userId,
+          id: actualUser.userId,
           fname: profile.fname,
           lname: profile.lname,
-          email: user.email, 
-          role: user.role,
-          avtar: user.avatar // Current avatar URL/base64
+          email: userBase.email,
+          role: actualUser.role,
+          avtar: actualUser.avatar
         }),
       });
 
-      if (!response.ok) throw new Error("Details update failed");
-
+      if (!response.ok) throw new Error();
       const data = await response.json();
-      
-      // Update Redux Store
-      dispatch(updateUser({ fName: data.fname, lName: data.lname }));
+      dispatch(updateUser({ ...actualUser, fName: data.fname, lName: data.lname }));
       toast.success("Personal details updated!");
     } catch (err) {
       toast.error("Unable to update details.");
@@ -153,83 +161,38 @@ let { user } = useSelector((state: RootState) => state.auth);
     }
   };
 
-  // 3. Sign Out (POST API)
-  const handleSignOut = async () => {
-    try {
-      await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/v1/user/${user?.userId}`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-    } catch (err) {
-      console.warn("Server side logout failed", err);
-    } finally {
-      // Frontend cleanup is mandatory
-      dispatch(logout());
-      toast.success("Logged out successfully");
-      navigate("/", { replace: true });
-    }
+  const handleSignOut = () => {
+    dispatch(logout());
+    toast.success("Logged out successfully");
+    navigate("/", { replace: true });
   };
 
-  if (!user) return null; // Fallback
+  if (!actualUser) return null;
 
   return (
     <PageLayout>
+      {/* --- HEADER SECTION --- */}
       <header className="border-b bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
         <div className="container py-12 md:py-16 flex flex-col md:flex-row items-center gap-8">
-          
-          {/* Avatar Section */}
           <div className="relative group shrink-0">
-            {/* Image display */}
             <div className="h-28 w-28 rounded-full overflow-hidden border-4 border-white dark:border-slate-800 shadow-xl bg-primary flex items-center justify-center text-white text-4xl font-bold font-display">
               {profile.avatar ? (
-                <img src={profile.avatar} alt="Profile" className="h-full w-full object-cover" />
+                <img src={profile.avatar.startsWith('data:') ? profile.avatar : `${profile.avatar}`} alt="Profile" className="h-full w-full object-cover" />
               ) : (
-                <>
-                  {profile.fname?.[0]?.toUpperCase()}
-                  {profile.lname?.[0]?.toUpperCase()}
-                </>
+                <>{profile.fname?.[0]?.toUpperCase()}{profile.lname?.[0]?.toUpperCase()}</>
               )}
-              
-              {/* Avatar Upload Loading Overlay */}
-              {avatarLoading && (
-                <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-full">
-                  <Loader2 className="h-6 w-6 animate-spin text-white" />
-                </div>
-              )}
+              {avatarLoading && <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-full"><Loader2 className="h-6 w-6 animate-spin text-white" /></div>}
             </div>
-
-            {/* Hidden File Input */}
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              onChange={handleAvatarChange} 
-              accept="image/*" 
-              className="hidden" 
-            />
-
-            {/* Upload Button (Floater) */}
-            <button 
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className={cn(
-                "absolute -bottom-1 -right-1 h-9 w-9 rounded-full bg-primary text-white flex items-center justify-center shadow-lg",
-                "transition-transform hover:scale-110",
-                avatarLoading && "opacity-50 cursor-not-allowed"
-              )}
-              disabled={avatarLoading}
-              aria-label="Change profile picture"
-            >
+            <input type="file" ref={fileInputRef} onChange={handleAvatarChange} accept="image/*" className="hidden" />
+            <button onClick={() => fileInputRef.current?.click()} className="absolute -bottom-1 -right-1 h-9 w-9 rounded-full bg-primary text-white flex items-center justify-center shadow-lg transition-transform hover:scale-110">
               <Camera className="h-4 w-4" />
             </button>
           </div>
 
-          {/* Header text */}
           <div className="flex-1 text-center md:text-left">
             <p className="text-xs font-medium uppercase tracking-[0.2em] text-primary">Member Account</p>
-            <h1 className="mt-2 font-display text-4xl font-semibold md:text-5xl tracking-tight">
-              {profile.fname} {profile.lname}
-            </h1>
-            <p className="mt-2 text-muted-foreground">{profile.email}</p>
+            <h1 className="mt-2 font-display text-4xl font-semibold md:text-5xl tracking-tight">{profile.fname} {profile.lname}</h1>
+            <p className="mt-2 text-muted-foreground flex items-center justify-center md:justify-start gap-2"><Mail size={14}/> {profile.email}</p>
           </div>
 
           <Button variant="outline" className="rounded-full border-destructive text-destructive hover:bg-destructive/10" onClick={handleSignOut}>
@@ -241,15 +204,11 @@ let { user } = useSelector((state: RootState) => state.auth);
       <main className="container py-12">
         <Tabs defaultValue="account" className="w-full">
           <TabsList className="mb-8 bg-muted rounded-full p-1 h-auto flex-wrap gap-1">
-            <TabsTrigger value="account" className="gap-2 rounded-full px-4 py-2">
-              <User size={16}/> Account
-            </TabsTrigger>
-            <TabsTrigger value="orders" className="gap-2 rounded-full px-4 py-2">
-              <Package size={16}/> Orders
-            </TabsTrigger>
+            <TabsTrigger value="account" className="gap-2 rounded-full px-4 py-2"><User size={16}/> Account</TabsTrigger>
+            <TabsTrigger value="orders" className="gap-2 rounded-full px-4 py-2"><Package size={16}/> Orders ({orders.length})</TabsTrigger>
           </TabsList>
 
-          {/* Account Details Tab */}
+          {/* --- ACCOUNT DETAILS TAB --- */}
           <TabsContent value="account">
             <form onSubmit={handleSaveDetails} className="grid gap-8 rounded-2xl border bg-card p-6 shadow-sm md:p-10">
               <div>
@@ -260,52 +219,100 @@ let { user } = useSelector((state: RootState) => state.auth);
               <div className="grid gap-5 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="first">First name</Label>
-                  <Input
-                    id="first"
-                    value={profile.fname}
-                    onChange={(e) => setProfile({ ...profile, fname: e.target.value })}
-                  />
+                  <Input id="first" value={profile.fname} onChange={(e) => setProfile({ ...profile, fname: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="last">Last name</Label>
-                  <Input
-                    id="last"
-                    value={profile.lname}
-                    onChange={(e) => setProfile({ ...profile, lname: e.target.value })}
-                  />
+                  <Input id="last" value={profile.lname} onChange={(e) => setProfile({ ...profile, lname: e.target.value })} />
                 </div>
                 
-                {/* Email (Read-only as it comes from Token) */}
                 <div className="sm:col-span-2 space-y-1.5">
                   <Label htmlFor="email">Email Address</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={profile.email}
-                    disabled 
-                    className="bg-muted cursor-not-allowed"
-                  />
-                  <p className="text-xs text-muted-foreground italic">Email is managed via identity provider and cannot be changed here.</p>
+                  <div className="relative">
+                    <Input id="email" type="email" value={profile.email} disabled className="bg-muted pl-10 cursor-not-allowed" />
+                    <ShieldCheck className="absolute left-3 top-2.5 text-muted-foreground h-5 w-5" />
+                  </div>
+                  <p className="text-xs text-muted-foreground italic">Email is managed via identity provider and cannot be changed.</p>
                 </div>
               </div>
 
               <div className="flex justify-end border-t pt-6">
                 <Button type="submit" size="lg" className="rounded-full px-10" disabled={loading}>
-                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Save Details
+                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Details
                 </Button>
               </div>
             </form>
           </TabsContent>
 
-          {/* Orders Tab (Placeholder) */}
-          <TabsContent value="orders">
-            <div className="rounded-2xl border bg-card p-12 text-center text-muted-foreground">
-              <Package className="h-10 w-10 mx-auto mb-4 opacity-50" />
-              <p className="font-medium">No orders found</p>
-              <p className="text-sm">You haven't placed any gifts yet.</p>
+          {/* --- ORDERS TAB --- */}
+          {/* --- ORDERS TAB --- */}
+<TabsContent value="orders">
+  {ordersLoading ? (
+    <div className="flex py-20 justify-center"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>
+  ) : orders.length > 0 ? (
+    <div className="grid gap-6">
+      {orders.map(order => {
+        // Saare products ki price ko manually plus (sum) karne ke liye logic
+        const calculatedTotal = order.products.reduce((acc, curr) => acc + curr.price, 0);
+
+        return (
+          <div key={order.id} className="rounded-2xl border bg-card overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+            <div className="bg-muted/30 p-4 border-b flex flex-wrap justify-between items-center gap-4">
+              <div className="flex gap-6">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Order Placed</p>
+                  <p className="text-sm font-medium">{new Date(order.orderDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Total (All Products)</p>
+                  {/* Yahan total sum display ho raha hai */}
+                  <p className="text-sm font-bold text-primary">₹{calculatedTotal.toLocaleString('en-IN')}</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Order ID</p>
+                <p className="text-sm font-mono text-muted-foreground">#{order.transactionID}</p>
+              </div>
             </div>
-          </TabsContent>
+
+            <div className="p-6 space-y-6">
+              {order.products.map(product => (
+                <div key={product.id} className="flex gap-4 items-center">
+                  <div className="h-20 w-20 rounded-xl overflow-hidden border bg-muted shrink-0">
+                    <img src={`${import.meta.env.VITE_API_BASE_URL}${product.productImage}`} alt={product.title} className="h-full w-full object-cover" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-semibold">{product.title}</h4>
+                    <p className="text-sm text-muted-foreground">Color: {product.color}</p>
+                    <div className={cn("mt-2 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider", 
+                      order.status === "PENDING" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700")}>
+                      {order.status}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    {/* Individual Product Price */}
+                    <p className="font-bold text-lg">₹{product.price.toLocaleString('en-IN')}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-4 bg-muted/10 border-t flex items-center gap-2 text-sm text-muted-foreground">
+              <MapPin size={16} className="text-primary"/>
+              <span>Delivered to: <strong>{order.address}</strong></span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  ) : (
+    <div className="rounded-2xl border border-dashed p-20 text-center bg-card">
+      <Package className="h-12 w-12 mx-auto mb-4 opacity-20" />
+      <h3 className="text-lg font-medium">No orders yet</h3>
+      <p className="text-muted-foreground">Your order history will appear here after your first purchase.</p>
+    </div>
+  )}
+</TabsContent>
         </Tabs>
       </main>
     </PageLayout>
